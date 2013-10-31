@@ -1,0 +1,28 @@
+Combiner：
+1、combine函数把一个map函数产生的<key, value>对（多个key，value）合并成一个新的<key2, value2>。将 新的<key2, value2>作为输入到reduce的函数中，
+其格式与reduce函数相同
+2、这样可以有效的减少中间结果，减少网络传输负荷
+例如：map数据是
+<1,20>, <1,30>, <1,40>
+<2,30>, <2,20>
+reduce中会变成：
+<1,<20,30,40>>
+应用Combiner之后会,reduce会接到：
+<1,90>, <2, 50>
+combiner实际上就是一个reduce程序
+
+应用场景：
+1、可以对记录进行魂宗统计的场景，如求和。
+2、求平均数的场景就不可以使用了。
+
+Combiner执行时机：
+1、运行combiner函数的时机有可能是在merge完成之前，或者之后，这个时机可以有一个参数控制，即min.num.spill.for.combine(default3)
+2、当job中设定了combiner，并且spill数最少有3个的时候，那么combiner函数就会在merge产生结果文件之前运行
+3、通过这样的方式，就可以在spill非常多需要merge，并且很多数据需要做combine的时候，减少写入到磁盘文件的数据数量，同样是为了减少对磁盘的读写频率，
+有可能达到优化作业的目的。
+4、Combiner也有可能不执行，Combiner会考虑当时集群的负载情况。
+
+
+
+
+

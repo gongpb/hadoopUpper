@@ -1,0 +1,51 @@
+一、Hadoop-HA
+hadoop1.0架构的问题：
+
+单点故障：
+如果NameNode或者JobTracker关掉，那么整个集群瘫痪
+对于7*24生产环境，是有极大的风险。
+
+常见的HA方案：
+第一种可以设置NFS的目录，存储fsimage和editlog，存储的是实时数据，这样当namenode挂掉后能够通过fsimage和editlog进行完全恢复。
+
+第二种通过设置Secondary Namenode
+
+问题：不能迅速的切换，需要花费一定时间恢复
+
+
+
+二、RPC：远程过程协议调用。
+通过RPC我们可以从网络上的计算机请求服务，而不需要了解底层网络协议。Hadoop底层的交互都是通过RPC进行的。例如：datanode和namenode、tasktracker和jobtracker、
+secondary namenode和namenode之间的通信都是通过rpc实现的。
+
+RPC采用客户机/服务器模式。请求程序就是一个客户机，而服务提供程序就是一个服务器。首先，客户机调用进程发送一个有进程参数的调用信息到服务进程，
+然后等待答应信息。在服务器端，进程保持睡眠状态知道调用信息的到达为止。当一个调用信息到达，服务器获得进行参数，计算结果，发送答复信息，然后等待
+下一个调用信息，最后，客户端调用进程接受答复信息，获得进程结果，然后调用执行继续进行。
+
+Hadoop RPC在整个Hadoop中应用非常广泛，Client、DataNode、NameNode之间的通讯全靠它了。
+举个例子,我们平时操作HDFS的时候，使用的是FileSystem类，它的内部有个DFSClient对象，这个对象负责与NameNode打交道。在运行时，DFSClient在本地
+创建一个NameNode的代理，这个代理就会通过网络，远程调用NameNode的方法，也能返回值。
+
+Hadoop RPC位于org.apache.hadoop.ipc
+Hadoop RPC = 动态代理 + 定制好的二进制流
+分为Server与Client端
+
+server端：
+Server.Listener RPC Server的坚挺着，用来接收RPC Client的的连接请求和数据，其中数据封装成Call后PUSH到Call队列
+Server.Handler RPC Server的Call处理者，和Server.Listener通过Call队列交互
+Server.Responder RPC Server的响应者。Server.Handler按照异步非阻塞的方式向RPC Client发送响应，如果有未发送出的数据，交由Server.Responder来完成
+Server.Connection RPC Server数据接收者。提供接收数据，解析数据包的功能
+Server.Call 持有客户端的Call信息。
+
+Client.ConnectionId 到RPC Server对象连接的标识
+Client.Call Call调用信息
+Client.ParalleResults Call响应。
+RPC.Invoker 对InvocationHandler的实现，提供invoke方法，实现RPC Client对RPC Server对象的调用
+RPC.Invocation 用来序列化和反序列化RPC Client的调用信息。（主要应用Java的反射机制和InputStream/OutputStream）
+
+Hadoop中使用RPC
+1、实现VersionedProtocol
+2、基础VersionedProtocal，定义Server（即NameNode）
+3、实现Client（即DataNode）
+
+

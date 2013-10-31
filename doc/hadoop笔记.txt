@@ -1,0 +1,231 @@
+hadoop学习：
+
+window安装：
+安装jdk
+安装Cygwin  http://www.cygwin.com
+安装ssh
+下载、配置hadoop
+启动
+
+linux安装
+实现ssh无密码登陆：
+1、安装ssh
+2、ssh keygen
+直接回车，完成会在 /.ssh/生成两个文件：id_dsa 和 id_dsa.pub.这两个是成对出现，雷系要是和锁，追加到授权key里面
+当前并没有authorized keys  $cat~/.ssh/id_rsa.pub>>~./ssh/authorized_keys完成之后可以实现无密码登陆本机
+测试：ssh locahost
+
+在conf/hadoop-evn.sh中配置JAVA_HOME路径
+export JAVA_HOME=/usr/lib/j2sdk1.5-sun
+
+在core-site.xml中配置
+<property>  
+    <name>fs.default.name</name>  
+    <value>hdfs://localhost:9000</value>  
+ </property>  
+
+ 在hdfs-site.xml中配置
+  <property>
+      <name>dfs.replication</name>
+      <value>1</value>
+   </property>
+
+在mapred-site.xml中配置
+<property>
+       <name>mapred.job.tracker</name>
+       <value>localhost:9001</value>
+   </property>
+
+启动：
+
+hadoop重要端口
+1、Job Tracker管理端口：50030
+2、HDFS管理端口：50070
+3、HDFS通信端口：9000
+4、MapReduce通信端口：9001
+
+
+运行wordcount实例：
+
+ ./bin/hadoop jar hadoop-examples-1.2.1.jar wordcount in out
+ 查看输出：
+ [root@localhost hadoop-1.2.1]# ./bin/hadoop fs -ls out
+Found 3 items
+-rw-r--r--   1 root supergroup          0 2013-08-15 10:10 /user/root/out/_SUCCESS
+drwxr-xr-x   - root supergroup          0 2013-08-15 10:09 /user/root/out/_logs
+-rw-r--r--   1 root supergroup         25 2013-08-15 10:10 /user/root/out/part-r-00000
+
+查看输出：
+
+[root@localhost hadoop-1.2.1]# ./bin/hadoop fs -cat out/part-r-00000
+hadoop  1
+hello   2
+world   1
+[root@localhost hadoop-1.2.1]# 
+
+
+
+hadoop shell：
+
+hadoop-config.sh:对变量进行赋值
+
+hadoop-daemon.sh单节点启动（启动一个namenode节点）
+例如：
+[root@localhost bin]# ./hadoop-daemon.sh start namenode
+[root@localhost bin]# ./hadoop-daemon.sh start datanode
+[root@localhost bin]# ./hadoop-daemon.sh start jobtracker
+
+hadoop-daemons.sh:其实是call slaves.sh脚本
+
+start-balancer.sh :把数据多的节点那一部分到其它节点，达到平衡，开销很大，通常是在没有任务的时候做这件事情
+
+各个脚本都有stop、start：如[root@localhost bin]# ./hadoop-daemon.sh stop namenode
+
+
+
+启动的三种方式：
+1、start-all.sh
+2、[root@localhost bin]# ./hadoop-daemon.sh start namenode
+3、./hadoop  namenode
+hadoop-daemon.sh实际上也是调用./hadoop  namenode
+
+打印整个folder信息打印出来：
+[root@localhost bin]# ./hadoop fsck /
+
+//集群、系统之间文件的copy
+[root@localhost bin]# ./hadoop distcp
+例如：
+[root@localhost bin]# ./hadoop distcp "hdfs://192.168.207.128:9000/user/root/in" "hdfs://192.168.207.128:9000/user/root/test"
+后边的路径不存在的时候会自动创建
+
+daemonlog 设置log的级别
+
+
+HDFS：分布式文件系统
+高容错行，可以部署在低成本的硬件上。提供高吞吐量的催应用程序的数据访问
+设计目标：
+假设节点失效是常态
+    任何一个节点失效都不会影响到HDFS的使用
+    HDFS可以自动完成副本的复制
+简单一致性模型， 假设write-once-read-many模式
+流式数据访问
+不支持文件并发写入
+不支持文件修改
+轻便的访问异构的软硬件平台
+
+不适合做的事情：
+存储小文件
+大量随机读
+需要对文件修改
+
+hdfs概念：
+角色：
+namenode：存储元数据     元数据保存在内存与磁盘上     保存文件，block、dataNode之间的映射关系
+DataNode：存储文件内容   文件内容保存咋ici拍         维护block id到datanode本地文件的映射关系
+SecondartNameNode 将namenode的fsimage与edit log从NameNode复制到临时目录  
+		  将fsimage同editlog合并产生新的fsimage
+		  将产生的新的fsimage上传到NameNode 清除NameNode中的editlog
+
+
+Block块：
+数据块（block）HDFS默认的最基本存储单位默认大小是64M
+减小磁盘的存储开销
+
+HDFS命令行接口：
+ [-lsr <path>] 递归，将文件以及文件夹中的文件全部显示
+ [-du <path>] 每个文件的大小
+ [-dus <path>] 把每个文件合并，显示大小
+ [-count[-q] <path>] 显示文件夹中有多少个文件，大小
+ [-getmerge <src> <localdst> [addnl]] 合并文件，并拷贝到本地文件中
+ [-rm [-skipTrash] <path>] 只能删除一个文件
+ [-rmr [-skipTrash] <path>] 递归删除
+ [-stat [format] <path>] 显示时间戳
+
+
+dfsadmin命令：
+[root@localhost hadoop-1.2.1]# ./bin/hadoop dfsadmin
+[-report]
+[-setQuota <quota> <dirname>...<dirname>] 设置文件夹中文件的数量
+[-clrQuota <dirname>...<dirname>]
+[-setSpaceQuota <quota> <dirname>...<dirname>]
+[-clrSpaceQuota <dirname>...<dirname>]
+
+目前Hadoop支持的文件系统：
+KFS ：Cloudstore是雷系HDFS的由C++编写的文件系统
+S3（本地）：由Amazon S3支持的文件系统
+S3（基于块）：由Amazon S3支持的文件系统，以块格式来存储
+HAR：一个构建在其他文件系统来存档的文件系统
+
+
+HDFS环境搭建：
+1、创建一个java project
+2、导入hadoop所需的所有的jar
+3、简历resources文件夹（source folder），将core-site.xml复制进去
+
+
+
+FileSystem的API
+
+文件系统、属性的获取
+
+FileUtil.java api解读
+
+
+Map Reduce：
+是一个简易的软件框架。基于它写出来的应用程序能够运行在由上千个商用机器组成的大型集群上，并以一种可靠容错的方式并行处理上T基本的数据集
+MapReduce基础出发点是易懂，它由map和reduce两部分用户程序组成，然后利用框架在计算机集群上面根据需求运行多个程序实例来处理各个子任务
+然后对结果进行归并。
+西红柿炒鸡蛋的例子
+
+job：用户的每一个计算请求，就称为一个作业
+JobTracker：用户提交作业的服务器，同事，它还负责各个作业任务的分配，管理所有的任务服务器
+TackTracker：负责执行具体的任务
+Task：每一个作业，都需要拆分开了，交个多个服务器来完成，拆分开来的执行单位，就称为任务。
+
+Map Reducer环境搭建
+Tool ，ToolRunner：Tool 打印所有信息的属性
+
+配置文件管理：
+1、可以在运行Job时用-conf参数指定要使用的配置文件，这样可以合理管理测试，生产环境所需的配置文件
+2、demo：
+    Hadoop-local.xml
+    Hadoop-localhost.xml
+3、Hadoop fs-conf文件名查看相应的配置
+
+切换配置文件：
+./bin/hadoop fs -conf hadoop-local.xml -ls
+
+编写MapReduce程序的步骤：
+1、编写一个Mapper类
+2、编写一个Reducer类
+3、编写一个Driver类（即Job），来将Mapper和Reducer类进行组合
+
+
+MapReduce程序运行的三种模式：
+1、local（Standalone） Mode：只有一个Java虚拟机在跑，完全没有分布式的成分，且不适用HDFS文件系统。而是使用本机的Linux文件系统
+2、Pseudo-distributed Mode：在同一台机器上面启动数个JVM进程，每一个hadoop daemon 运行在一个单独的JVM进程中，进行“伪分布式”操作
+3、Fully-distributed Mode：真正的可以运行于多台机器上面的分布式模式。其中Standlone mode使用local fileSystem以及local MapReduce job runner，
+Distributed mode 使用HDFS以及MapReduce daemons
+
+往hdfs中copy文件：
+[root@localhost hadoop-1.2.1]# ./bin/hadoop fs -put ../input/ inputWord/
+
+运行：
+./bin/hadoop jar wordcount.jar  com.funshion.hadoop.test.mapReduce.WordCount inputword outputword
+报错：Exception in thread "main" java.lang.ClassNotFoundException: wordcount的时候把WordCount的路径写全
+
+
+独立运行的作业
+假设有Job1、Job2需要运行
+如果作业是线性：JobClient.runjob(conf1);
+		JobClient.runjob(conf1);
+如果更负责的是环形的，可以通过Hadoop自带的JobControl来运行
+
+
+
+
+
+
+
+
+

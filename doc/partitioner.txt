@@ -1,0 +1,24 @@
+Partitioner:
+自定义分区，根据需求把内容相同的部分放到同一个文件中
+1、Mapreduce通过Partitioner对key进行分区，进而把数据按照我们的需求来分发。
+2、使用场景：
+（a）如果你需要key按照自己意愿分发，那么你需要这样的组件。
+（b）例如：数据文件内包含省份，而输出要求每个省份输出一个文件
+3、框架默认的HashPartitionier
+public class HashPartitioner<K2, V2> implements Partitioner<K2, V2> {
+}
+hash可以保证同样的key去同样的reduce
+
+4、使用方法：
+ 需要写：mapper、reducer、partitioner、driver
+（a）实现Partitioner接口覆盖getPartition()方法
+（b）配置作业时加入conf.setPartitionerClass(MyPartitioner.class);
+（c）Partitioner示例：
+public static class MyPartitioner implements Partitioner<Text, Text>{
+	@Override
+	public int getPartition(Text key, Text value, int numPartitions){
+	
+	}
+}
+
+

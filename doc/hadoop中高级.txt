@@ -1,0 +1,265 @@
+一、Hadoop IO：数据完整性，如何保证数据的完整性
+
+数据完整性以及采用的技术：
+保证数据在传输过程中不损坏，常见的保证数据完整性采用的技术：
+（a）奇偶行校验技术
+（b）ECC校验纠错技术
+（c）CRC－３２循环冗余校验技术
+
+ECC内存：内存数据不丢失，完整性
+CRC－３２：把每段数据生成３２位４字节的校验和。hadoop采用此种技术
+
+HDFS的数据完整性：
+   写入：
+   HDFS以透明方式校验所有写入它的数据，并在默认设置下，会在读取数据时验证校验和。针对数据的每个io.bytes.per.checksum（默认512字节）字节，都会创建一个单独的校验和。
+   数据节点负责在存储数据及校验和之前校验他们收到的数据。从客户端和其它数据节点复制过来的数据。客户端写入数据并且将它发送到一个数据节点管线中，
+在管线的最后一个数据节点验证校验和。
+   读取：
+   客户端读取数据节点上的数据时，会验证校验和，将其与数据节点上存储的校验和进行比对。每个数据节点维护一个连续的校验和验证日志，因此它知道每个数据库最后验证的时间。
+每个数据节点还会在后台线程运行一个DataBlockScanner（数据库检测程序），定期验证存储在数据节点上的所有块，为了防止物理存储介质中位衰减所造成的数据损坏。
+   HDFS通过复制完整的副本来产生一个新的，无错的副本来“治愈”那些出错的数据块。工作方式：如果客户端读取数据块时，检测到错误。跑出CheckSumException前报告该坏块以及
+它视图从名称节点中读取数据节点。名称节点将这个块标记为损坏的，不会直接赋值给客户端或者赋值该副本到另一个数据节点。它会从其他副本复制一个新的副本。
+
+
+本地文件系统：
+Hadoop的本地文件系统执行客户端校验。意味着，再写一个名finalname的文件时，文件系统的客户端以透明的方式创建一个隐藏.filename.crc。在同一个文件夹下，包含每个文件块的校验和。
+    数据块大小有io.bytes.per.checksum属性控制。块的大小作文元数据存储在.crc文件中。也可能禁用校验和。底层文件系统原生支持校验和。这里通过RawLocalFIleSystem来替代LocalFileSystem
+完成。要在一个应用中全局使用。只需要设置fs.file.impl值为org.apache.hadoop.fs.RawLocalFileSystem来重新map执行文件的URL。或者只想对某些读取禁用校验和校验。例子：
+Configuration conf = ...
+FileSystem fs = new RawLocalFileSystem();
+fs.initialize(null, conf);
+
+ChecksumFileSystem：
+LocalFileSystem使用ChecksumFileSystem（校验和文件系统）为自己工作，这个类可以很容易添加校验和功能到其他文件系统中。因为ChecksumFileSystem也可包含于文件系统中。
+
+
+
+
+二、编码/解码：
+编码/解码器：用以执行压缩解压算法：
+（a）DEFLATE org.apache.hadoop.io.compress.DefaultCodec
+（b）gzip org.apache.hadoop.io.compress.GzipCodec
+（c）bzip2 org.apache.hadoop.io.compress.Bzip2Codec
+（d）LZO com.hadoop.compression.lzo.LzopCodec
+
+CompressionCodec对流进行压缩与解压缩 ，所有类的父类
+CompressionCodecFactory方法来推断CompressionCodec,这个类会判断这个文件使用了什么解码器
+
+
+压缩与输入分割：
+1）在考虑如何压缩那些将由MapReduce处理的数据时，考虑格式是否支持分割是很重要的。
+2）选择哪种压缩形式
+总体原则：经过测试才能决定
+经验：大文件选择支持分割的压缩形式
+
+在MR中使用压缩:
+前提：
+如果文件是压缩过的，那么在MR读取时，它们会被解压缩，根据文件的扩展名来选择 应该使用哪一种压缩解码器。
+使用：
+1）压缩MR的作业输出，在作业配置中将mapred.output.compress属性设置为true，将mapred.output.compress.codec属性设置为自己需要使用的压缩解码、编码的类名
+2）通过gunzip -c file 来查看结果
+code example：reduc使用压缩
+conf.setBoolean("mapred.output.compress",true);
+conf.setClass("mapred.output.compression.codec", GzipCodec.class,CompressionCodec.class);
+
+map作业输出结果的压缩
+原因：
+Map作业的中间结果会输出到本地，并在网络上传递。所以压缩能获得更好的性能，因为传播的数据上减少了。
+Map输出压缩属性：mapred.compress.map.output
+code example:
+conf.setCompressMapOutput();
+conf.setMapOutputCompressorClass(GzipCodec.class);
+
+
+
+三、序列化
+序列化指将结构化对象转为字节流以便于通过网络进行传输或写入持久存储的过程。
+反序列化指的是将字节流转为一系列结构化对象的过程。
+序列化用于：进程间的通信与持久存储
+
+RPC序列化建议的特性：
+1、紧凑（compact）方便网络传输，充分利用存储空间
+2、快速（Fast） 序列化与反序列化性能好
+3、扩展性（Extensible）协议有变化，可以支持新的需求
+4、互操作性（Interoperable）客户端及服务器端不依赖语言的实现，
+Hadoop使用Writables，满足紧凑、快速，不满足扩展及互操作性
+
+Hadoop的序列化不是java的序列化，自己实现了自己的序列化机制，格式Writables
+Hadoop中定义了两个序列化相关接口：Writables接口和Comparable接口，这两个接口可以合并成一个接口WritableComparable
+
+hadoop与java 序列化对比：
+1、java的序列化不能复用对象以及这个对象的结构，只能每来一个新的对象创建一个新的对象
+2、java的序列化每次接收到一个新类的时候，都会保存里面的所有的信息。包括依赖等所有的参数，但是hadoop不是这样的。
+3、hadoop自己写序列化中的逻辑比较容易
+
+接口：
+Writable：
+Text：
+Text是UTF-8的Writable。可以将它理解为一种鱼java.lang.String相似的Writable。Text类代替了UTF-8类。
+Text是可变的，其值可以通过set方法进行改变，最大的存储是2GB。
+
+NullWritable
+NullWritable是一种特殊的Writable类型，因为它的序列化的长度是零。可以作为占位符。
+
+BytesWritable：
+BytesWritable是一个二进制的数据数组封装。它的序列化格式是一个int字段。
+BytesWritable是可变的，其值可以通过调用set()方法类改变。
+
+自定义Writable接口：demo见Person.java
+
+
+
+四、Hadoop IO：基于文件的数据结构
+MapFile：
+MapFile是经过排序，带有索引的SequeceFile，是可以分割的。
+SequeceFile是HadoopAPI提供的一种二进制文件支持。这种二进制文件直接将<key, value>对序列化到文件中。
+key是任意的Writable，Value是任意的Writable
+
+
+这种文件格式有一下好处：
+（a）支持压缩，且可定制为基于Record（行）或Block压缩（Block压缩性压缩较优），
+（b）本地化任务支持：因为文件可以被切分，因此MapReduce任务时数据的本地化情况应该是非常好的。
+（c）难度低，因为是Hadoop框架提供的API，业务逻辑侧的修改比较简单
+
+在SequenceFile使用压缩
+写：压缩分为Record和Block两种
+读时自动解压。
+步骤：
+增加如下code：
+SequeceFile.createWriter(fs, conf, path, key.getClasses(),value.getClass(),SequenceFile.CompressionFileType.RECORD, new Bzip2Codec() )
+这种压缩不会改变压缩文件的扩展名，只是对内容进行压缩，压缩之后文件变大了
+
+MapFile：
+MapFile是经过排序的带索引的SequeceFile，可以根据键值进行查找，查询速度比较快。由两部分组成，分别是data和index。index作为文件的数据索引，主要记录了每个Record的key值，
+以及该Record在文件中的偏移位置。在MapFile被访问的时候，索引文件会被加载到内存，通过索引映射关系可以迅速定位到指定的Record所在的文件位置，因此相对
+SequenceFile而言，MapFile的检索效率是高效的，缺点是会消耗一部分内存来存储index数据。
+
+
+
+五、MapReduce工作原理-MapReduce的工作原理：
+Client：作业的提交发起者
+JobTracker：初始化作业，分配作业，与TaskTracker通信，协调整个作业
+TaskTracker：保持JobTracker通信，在分配的数据片段上执行MapReduce任务
+HDFS：保持作业的数据、配置信息等，保存作业结果
+
+任务的分配：
+TaskTracker和JobTracker之间的通信与任务的分配是通过心跳机制完成的。
+TaskTracker会主动向JobTracker询问是否有作业要做，如果自己可以这么做，那么就会申请到作业任务，这个任务可以使Map也可能是Reduce任务
+任务分配主要是在TaskTracker中的transmitHeartBeat(long now)方法中
+1、如果TaskTracker拿到任务，拷贝所有的信息的到本地，包括代码、任务的配置信息、数据的分片索引
+
+任务执行：
+TaskTracker localizeJob()：主要做的事情：1、将job.slit拷贝到本地。2、job.jar拷贝到本地； 3、job.xml拷贝到本地
+通过TaskTracker launchTaskForJob方法执行
+
+状态与任务的更新：
+任务运行过程中，首先将自己的状态汇报给TaskTracker，然后由TaskTracker会周期性的收集所有任务的信息（自己机器上的）汇总告之JobTracker。
+任务进度是通过计数器来实现的。
+JobTracker会根据所有的所有的TaskTracker汇报上来的数据进行汇总
+
+作业的完成：
+JobTracker是在接受到最后一个任务运行完成后，才会将任务标志为成功。
+此时会做删除中间结果等善后工作。
+
+
+
+六、MapReduce工作原理-MapReduce错误的处理：
+1、子任务失败
+2、子任务的JVM突然退出
+3、任务的挂起
+
+TaskTracker失败：
+1、Tasktracker崩溃后会停止向Jobtracker发送心跳信息。
+2、Jobtracker 会将该TaskTracker从等待任务池中移除。并将该TaskTracker上的 任务，移动到其它地方去从新运行。
+3、TaskTracker可以被JobTracker放入黑名单，即使它没有失败。
+
+JobTracker失败：
+单点故障,Hadoop新的0.23版本解决了这个问题。
+
+七、MapReduce工作原理-MapReduce作业调度：
+先进先出（FIFO）：
+Hadoop中默认的调度器，它先按照作业的优先级高低，再按照到达时间的先后选择被执行的作业。
+
+公平调度器：
+为任务分配资源的方法，其目的是随着时间的推移，让提交的作业获取等量的集群共享资源，让用户公平的共享集群。
+具体做法是：当集群上只有一个任务在运行时，它将使用整个集群，当有其它作业提交时，系统会将TaskTracker节点空间的
+时间片分配给这些新的作业，并保证每个任务都得到大概等量的CPU时间。
+
+容量调度器：
+支持多个队列，每个队列可配置一定的资源量，每个队列采用FIFO调度策略，为了防止同一个用户的作业独占队列中的资源，
+该调度器对同一用户提交的作业所占的资源量进行限定。调度时，首先按以下策略选择一个合适队列：计算每个队列中正在
+运行的任务数与其应该分得计算资源之间的比值，现则一个该比值最小的队列；然后按以下策略选择该队列中的一个作业；
+按照作业优先级和提交时间顺序选择，同事考虑用户资源量限制和内存限制。但是不可剥夺式。
+
+配置公平调度器：
+1、修改mapred-site.xml加入以下内容：
+<property>
+       <name>mapred.jobtracker.taskScheduler</name>
+       <value>org.apache.hadoop.mapred.FairScheduler</value>
+   </property>
+   <property>
+       <name>mapred.faircheduler.allocation.file</name>
+       <value>/usr/local/etc/hadoop/hadoop-1.2.1/conf/allocation.xml</value>
+   </property>
+   <property>
+        <name>mapred.fairscheduler.poolnameproperty</name>
+        <value>pool.name</value>
+   </property>
+ 2、在hadoop 的conf下创建allocations.xml
+ 内容：
+
+ 3、重启JobTracker
+ 4、访问http://192.168.207.128:50030/scheduler 查看FariScheduler的UI
+ 5、提交任务测试
+
+八、MapReduce工作原理-Shuffle与排序：
+Shuffle是MapReduce的核心
+MapReduce的map结束后，把数据重新组织，作为reduce阶段的输入，该过程称之为shuffle-》洗牌。
+而数据在Map与Reduce端都会做排序。
+
+Map
+map的输出是有cllector控制
+从collect方法入手
+Reduce
+reduce的Shuffle过程，分成三个阶段：复制Map输出、排序合并、reduce处理。
+主要代码在reduce的run方法。
+Shuffle优化：
+首先Hadoop的Shuffle在某些情况下并不是最优的，例如：如果需要对2集合合并，那么其实排序操作是不需要的。
+我们可以通过调整参数来优化Shuffle
+map端：
+ io.sort.mb
+reduce端：
+ mapred.job.reduce.input.buffer.percent
+
+
+九、MapReduce工作原理-任务执行时一些特有的概念
+1、推测式执行
+（a）每一道作业的任务都有运行时间，而由于机器的异构性，可能会造成某些任务比所有任务的平均运行时间要慢很多。
+（b）这时MapReduce会尝试在其他机器上重启慢任务。为了是任务快速运行完成。
+（c）该属性默认是启动的。
+2、JVM重用
+（a）启动JVM是一个比较耗时的工作，所以在MapReduce中有JVM重用的机制。
+（b）条件是同一个作业的任务
+（c）可以通过mapred.job.reuse.jvm.num.tasks定义重用次数，如果属性是-1那么为无限制。
+3、跳过坏记录
+（a）数据的一些记录不符合规范，处理时抛出异常，MapReduce可以将此记录标识为坏记录。重启任务时会跳过该记录
+（b）默认情况下该属性是关闭的。
+4、任务执行环境
+Hadoop为Map和Reduce提供了运行环境
+Map可以知道自己处理的文件
+问题：多个任务可能同时写一个文件
+    解决办法：将输出写入到任务的临时文件夹。
+在map里面可以再
+@Override
+	public void configure(JobConf job) {
+		super.configure(job);
+	}
+	中拿到   map的执行环境
+
+
+
+
+
+
+
+

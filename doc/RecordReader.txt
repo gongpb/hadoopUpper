@@ -1,0 +1,20 @@
+RecordReader
+1、定义：
+（a）用于在分块中读取<key, value>对，也就是说每一次我们读取一条记录都会调用该类
+（b）主要是处理InputFormat分片完的数据
+2、使用场景：
+（a）需要对输入的数据按自己的需求处理
+（b）如：要求输入的key不是文件的偏移量而是文件的路径或者名字
+
+3、系统默认为LineRecordReader
+4、按照每行的偏移量做为map输出时的key值，每行的内容作为map的value值，默认的分隔符是回车和换行
+例如，需求：
+更改map对应的输入<key, value>值，key对应的文件路径或者文件名，value对应的是文件内容(content)
+步骤：
+（a）重写InputFormat不对文件切分
+（b）重写RecordReader
+（c）在配置作业时使用自定义的组件进行数据处理
+
+
+
+

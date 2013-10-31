@@ -1,0 +1,62 @@
+普通排序：
+Mapreduce默认自带排序，按照Key进行排序
+Text对象是不适合排序的，如果内容为整型不会按照编码区排序
+一般情况下可以考虑以IntWritable作为Key，同时将Reduce设置为0，进行排序
+
+部分排序：
+1、即输出的每个文件都是排序的
+2、如果我们不需要全局排序，那么这个是很好的选择
+
+全局排序：
+产生背景：
+1、Hadoop平台没有提供全局排序的刚弄，而在大数据处理中进行数据的全局排序是很普遍的需求
+2、使用Hadoop进行大量的数据排序最直观的方法是把文件所有内容给map之后，map不做任何处理，直接输出给一个reduce，
+利用hadoop的自己的shuffle机制，对所有数据进行排序，而后由reduce直接输出
+3、快速排序基本步骤就是需要现在所有数据中选取一个作为支点。然后将大于这个支点的放在一边，小于这个支点的放在另一边。
+
+hadoop对大量数据进行排序的步骤：
+1、对待排序数据进行抽样
+2、对抽样数据进行排序，产生标尺
+3、Map对输入的每条数据计算其处于哪个标尺之间，将数据发给对应区间ID的reduce
+4、Reduce将获取的数据直接输出
+
+1、Hadoop提供了Sampler接口可以返回一组样本，该接口为Hadoop的采样器
+2、Hadoop提供了一个TotalOrderPartitioner，可以使我们来实现全局排序
+
+
+
+MapReduce的二次排序
+产生背景
+1、MapReduce默认会对key进行排序
+2、将输出到Reduce的values也进行预先的排序
+实现方式：
+1、重写Partitioner，完成Key分区，进行第一次排序
+2、实现WritableComparator，完成自己的排序逻辑，完成key的第2次排序
+原理：
+1、map之前数据：
+key1 1
+key2 2
+key2 3
+key3 4
+key1 2
+2、MapReduce只能排序key，所以为了二次排序，我们需要重新定义自己的key，简单说，就是：
+<key value> value 组合完后是：
+<key1 1> 1
+<key2 2> 2
+<key2 3> 3
+<key3 4> 4
+<key1 2> 2
+3、自定义排序类，分组类，数据变成：
+<key1 1> 1
+<key1 2> 2
+<key2 2> 2
+<key2 3> 3
+<key3 4> 4
+
+4、最后reduce处理之后的结果：
+key1 1
+key1 2
+key2 2
+key2 3
+key3 4
+
